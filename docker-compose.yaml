@@ -1,0 +1,60 @@
+version: "3.7"
+services:
+
+  envoy:
+    build:
+      context: envoy
+      dockerfile: Dockerfile-envoy
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy.yaml
+    networks:
+      - envoymesh
+    expose:
+      - "8001"
+      - "8010"
+    ports:
+      - "8001:8001"
+      - "8000:8000"
+
+  extauth:
+    build:
+      context: extauth
+    networks:
+      - envoymesh
+    expose:
+      - "4000"
+    ports:
+      - "4000:4000"
+
+  instagram:
+    build:
+      context: ./service/sn-instagram
+      dockerfile: Dockerfile-service-instagram
+    volumes:
+      - ./service/sn-instagram/service-envoy.yaml:/etc/service-envoy.yaml
+    networks:
+      envoymesh:
+        aliases:
+          - instagram
+    environment:
+      - SERVICE_NAME=INSTAGRAM
+    expose:
+      - "80"
+
+  facebook:
+    build:
+      context: ./service/sn-facebook
+      dockerfile: Dockerfile-service-facebook
+    volumes:
+      - ./service/sn-facebook/service-envoy.yaml:/etc/service-envoy.yaml
+    networks:
+      envoymesh:
+        aliases:
+          - facebook
+    environment:
+      - SERVICE_NAME=FACEBOOK
+    expose:
+      - "80"
+
+networks:
+  envoymesh: {}

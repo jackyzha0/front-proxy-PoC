@@ -1,0 +1,86 @@
+admin:
+  access_log_path: /tmp/admin_access.log
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 8001
+
+
+static_resources:
+  listeners:
+    - name: listener_0
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8000
+      filter_chains:
+      - filters:
+        - name: envoy.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.config.filter.network.http_connection_manager.v2.HttpConnectionManager
+            stat_prefix: ingress_http
+            codec_type: AUTO
+            route_config:
+              name: local_route
+              request_headers_to_remove: ["Authorization"]
+              virtual_hosts:
+              - name: local_service
+                domains: ["*"]
+                routes:
+                - match:
+                    prefix: "/facebook/"
+                  route:
+                    cluster: facebook
+                - match:
+                    prefix: "/instagram/"
+                  route:
+                    cluster: instagram
+            http_filters:
+            - name: envoy.ext_authz
+              config:
+                grpc_service:
+                  envoy_grpc:
+                    cluster_name: extauth
+            - name: envoy.router
+  clusters:
+  - name: instagram
+    connect_timeout: 0.25s
+    type: strict_dns
+    lb_policy: round_robin
+    http2_protocol_options: {}
+    load_assignment:
+      cluster_name: instagram
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: instagram
+                    port_value: 80
+  - name: facebook
+    connect_timeout: 0.25s
+    type: strict_dns
+    lb_policy: round_robin
+    http2_protocol_options: {}
+    load_assignment:
+      cluster_name: facebook
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: facebook
+                    port_value: 80
+  - name: extauth
+    type: STRICT_DNS
+    connect_timeout: 0.25s
+    http2_protocol_options: {}
+    load_assignment:
+      cluster_name: extauth
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: extauth
+                port_value: 4000
