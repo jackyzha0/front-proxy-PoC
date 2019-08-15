@@ -1,5 +1,6 @@
 FROM golang:latest as builder
 
+
 COPY . /ext-auth-poc
 WORKDIR /ext-auth-poc
 ENV GO111MODULE=on

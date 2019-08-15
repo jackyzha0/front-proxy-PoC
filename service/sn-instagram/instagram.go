@@ -34,5 +34,10 @@ func IGServiceHandler(w http.ResponseWriter, r *http.Request) {
 	post_id := vars["post_id"]
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "Hello from the Instagram service! Fetching post with ID %q\n", post_id)
-	fmt.Fprintf(w, "Finding test header value: %q\n", r.Header.Get("x-ext-auth-token"))
+	fmt.Fprintf(w, "Finding Auth1: %q\n", r.Header.Get("x-ext-auth1"))
+	fmt.Fprintf(w, "Finding Auth2: %q\n", r.Header.Get("x-ext-auth2"))
+	fmt.Fprintf(w, "Finding Social Network Auth1: %q\n", r.Header.Get("x-ext-sn-auth1"))
+	fmt.Fprintf(w, "Finding Social Network Auth2: %q\n", r.Header.Get("x-ext-sn-auth2"))
+	fmt.Fprintf(w, "Finding Social Network Auth3: %q\n", r.Header.Get("x-ext-sn-auth3"))
+	fmt.Fprintf(w, "Finding Social Network App ID: %q\n", r.Header.Get("x-ext-sn-app-id"))
 }

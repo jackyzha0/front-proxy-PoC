@@ -2,38 +2,51 @@ package main
 
 import (
 	"context"
+	"google.golang.org/grpc"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	auth "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
 	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type"
-	"github.com/gogo/googleapis/google/rpc"
-	"google.golang.org/grpc"
+	rpc "istio.io/gogo-genproto/googleapis/google/rpc"
 )
 
-func contains(s []int, e int) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
+type AuthorizationServer struct{
+	socialProfileService SocialProfileService
+}
+
+func constructgRPCResponse(status int32, success bool, envoyStatus int, body string, headers []*core.HeaderValueOption) (*auth.CheckResponse, error) {
+	if success {
+		return &auth.CheckResponse{
+			Status: &rpc.Status{
+				Code: status,
+			},
+			HttpResponse: &auth.CheckResponse_OkResponse{
+				OkResponse: &auth.OkHttpResponse{
+					Headers: headers,
+				},
+			},
+		}, nil
+	} else {
+		return &auth.CheckResponse{
+			Status: &rpc.Status{
+				Code: status,
+			},
+			HttpResponse: &auth.CheckResponse_DeniedResponse{
+				DeniedResponse: &auth.DeniedHttpResponse{
+					Status: &envoy_type.HttpStatus{
+						Code: envoy_type.StatusCode(int32(envoyStatus)),
+					},
+					Body: body,
+				},
+			},
+		}, nil
 	}
-	return false
 }
-
-func validID(id int) bool {
-	valid := []int{1,160401}
-	return contains(valid, id)
-}
-
-func fetchToken(id int) string {
-	return "some test token"
-}
-
-// empty struct because this isn't a fancy example
-type AuthorizationServer struct{}
 
 // Inject header with API token if ID is valid
 func (authserv *AuthorizationServer) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
@@ -44,42 +57,48 @@ func (authserv *AuthorizationServer) Check(ctx context.Context, req *auth.CheckR
 		// Extract Social Network ID from auth
 		sn_id, _ := strconv.Atoi(splitToken[1])
 
-		// This is where you'd go check with the system that knows if it's a valid token.
-		if validID(sn_id) {
-			tokenSha := fetchToken(sn_id)
-			return &auth.CheckResponse{
-				Status: &rpc.Status{
-					Code: int32(rpc.OK),
-				},
-				HttpResponse: &auth.CheckResponse_OkResponse{
-					OkResponse: &auth.OkHttpResponse{
-						Headers: []*core.HeaderValueOption{
-							{
-								Header: &core.HeaderValue{
-									Key:   "x-ext-auth-token",
-									Value: tokenSha,
-								},
-							},
-						},
-					},
-				},
-			}, nil
-		}
-	}
+		profile, err := authserv.socialProfileService.GetSocialProfile(int64(sn_id))
 
-	return &auth.CheckResponse{
-		Status: &rpc.Status{
-			Code: int32(rpc.UNAUTHENTICATED),
-		},
-		HttpResponse: &auth.CheckResponse_DeniedResponse{
-			DeniedResponse: &auth.DeniedHttpResponse{
-				Status: &envoy_type.HttpStatus{
-					Code: envoy_type.StatusCode_Unauthorized,
+		if err != nil {
+			return constructgRPCResponse(int32(rpc.INVALID_ARGUMENT), false, http.StatusFailedDependency, "Invalid Auth Header!", nil)
+		}
+
+		headers := []*core.HeaderValueOption{
+			{
+				Header: &core.HeaderValue{
+					Key:   "x-ext-auth1",
+					Value: profile.Auth1,
 				},
-				Body: "Invalid Auth Header!",
+			}, {
+				Header: &core.HeaderValue{
+					Key:   "x-ext-auth2",
+					Value: profile.Auth2,
+				},
+			}, {
+				Header: &core.HeaderValue{
+					Key:   "x-ext-sn-auth1",
+					Value: profile.SocialNetworkAppAuth1,
+				},
+			}, {
+				Header: &core.HeaderValue{
+					Key:   "x-ext-sn-auth2",
+					Value: profile.SocialNetworkAppAuth2,
+				},
+			}, {
+				Header: &core.HeaderValue{
+					Key:   "x-ext-sn-auth3",
+					Value: profile.SocialNetworkAppAuth3,
+				},
+			}, {
+				Header: &core.HeaderValue{
+					Key:   "x-ext-sn-app-id",
+					Value: strconv.FormatUint(profile.SocialNetworkAppID, 10),
+				},
 			},
-		},
-	}, nil
+		}
+		return constructgRPCResponse(int32(rpc.OK), true, -1, "", headers)
+	}
+	return constructgRPCResponse(int32(rpc.UNAUTHENTICATED), false, 401, "Invalid Auth Header!", nil)
 }
 
 func main() {
@@ -90,7 +109,7 @@ func main() {
 	log.Printf("listening on %s", lis.Addr())
 
 	grpcServer := grpc.NewServer()
-	authServer := &AuthorizationServer{}
+	authServer := &AuthorizationServer{NewSocialProfileService()}
 	auth.RegisterAuthorizationServer(grpcServer, authServer)
 
 	if err := grpcServer.Serve(lis); err != nil {
